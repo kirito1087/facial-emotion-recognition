@@ -355,7 +355,7 @@ body::after {
 }
 
 .dominant-emoji {
-  font-size: 3rem;
+  font-size: 4.5rem;
   line-height: 1;
   display: block;
   margin-bottom: 14px;
@@ -427,7 +427,7 @@ body::after {
 }
 
 .emo-icon {
-  font-size: 0.95rem;
+  font-size: 1.3rem;
   width: 22px;
   text-align: center;
   flex-shrink: 0;

@@ -322,7 +322,7 @@
       const lx = cx + Math.cos(a) * lr;
       const ly = cy + Math.sin(a) * lr;
 
-      rctx.font = '500 18px "Space Grotesk", system-ui';
+      rctx.font = '500 26px "Space Grotesk", system-ui';
       rctx.fillStyle = '#666';
       rctx.textAlign = 'center';
       rctx.textBaseline = 'middle';
