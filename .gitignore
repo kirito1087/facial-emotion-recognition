@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+
+# Python (legacy)
+.venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
