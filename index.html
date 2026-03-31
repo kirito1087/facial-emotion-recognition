@@ -3,147 +3,142 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Facial Emotion Recognition — Real-time AI</title>
-  <meta name="description" content="Real-time facial emotion recognition powered by AI. Detects happy, sad, angry, surprised, fearful, disgusted, and neutral expressions using your webcam — all processing happens locally in your browser.">
+  <title>FER — Facial Emotion Recognition</title>
+  <meta name="description" content="Real-time facial emotion recognition in your browser. Detects 7 emotions using AI — all processing happens locally. No data leaves your device.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◉</text></svg>">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <!-- Loading Screen -->
+  <!-- Ambient glow (emotion-reactive) -->
+  <div class="ambient-glow"></div>
+  <div class="ambient-glow-2"></div>
+
+  <!-- Loading -->
   <div id="loading-screen">
-    <div class="loading-icon"></div>
-    <div class="loading-title">Loading AI Models</div>
-    <div class="loading-subtitle">Preparing face detection & emotion recognition…</div>
-    <div class="loading-progress-track">
-      <div class="loading-progress-bar"></div>
+    <div class="loader-ring"></div>
+    <div class="loader-label">Loading models</div>
+    <div class="loader-bar-track">
+      <div class="loader-bar-fill" id="progress-bar"></div>
     </div>
   </div>
 
-  <!-- Main App -->
-  <div class="app-container">
+  <!-- App -->
+  <div class="shell" id="shell">
 
-    <!-- Header -->
-    <header class="app-header">
-      <h1>Facial Emotion Recognition</h1>
-      <p>Real-time AI-powered emotion detection — all processing happens locally in your browser</p>
-    </header>
+    <!-- Topbar -->
+    <nav class="topbar">
+      <div class="brand">
+        <div class="brand-mark" id="brand-mark"></div>
+        <span class="brand-name">FER</span>
+      </div>
+      <div class="topbar-meta">
+        <span class="topbar-tag">TensorFlow.js</span>
+        <div class="topbar-status">
+          <span class="status-pip" id="status-pip"></span>
+          <span id="status-label">offline</span>
+        </div>
+      </div>
+    </nav>
 
-    <!-- Layout -->
-    <div class="main-layout">
+    <!-- Grid -->
+    <div class="layout">
 
-      <!-- Video Feed -->
-      <div class="video-section glass-card">
-        <div class="video-container">
-          <video id="webcam-video" autoplay playsinline muted></video>
-          <canvas id="overlay-canvas"></canvas>
+      <!-- Video feed -->
+      <div class="feed">
+        <div class="feed-viewport">
+          <video id="webcam" autoplay playsinline muted></video>
+          <canvas id="canvas"></canvas>
 
-          <!-- Placeholder when camera is off -->
-          <div class="camera-placeholder">
-            <div class="camera-placeholder-icon">📷</div>
-            <div class="camera-placeholder-text">Camera is off</div>
+          <div class="feed-placeholder" id="placeholder">
+            <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            <span>Camera off</span>
           </div>
 
-          <!-- No face detected indicator -->
-          <div class="no-face-indicator">No face detected</div>
+          <div class="no-face-pill" id="no-face">no face detected</div>
         </div>
 
-        <!-- Controls -->
-        <div class="video-controls">
-          <div class="status-badge">
-            <span class="status-dot"></span>
-            <span id="status-text">Initializing…</span>
+        <div class="feed-bar">
+          <div class="feed-bar-left">
+            <div class="feed-stat"><strong id="v-faces">0</strong> faces</div>
+            <div class="feed-stat"><strong id="v-fps">0</strong> fps</div>
           </div>
-          <button id="toggle-btn" class="btn btn-primary">▶ Start</button>
+          <button class="btn-toggle" id="btn">Start</button>
         </div>
       </div>
 
-      <!-- Sidebar -->
-      <aside class="sidebar">
+      <!-- Sidebar panel -->
+      <div class="panel">
 
-        <!-- Dominant Emotion -->
-        <div class="dominant-emotion-card glass-card">
-          <div class="dominant-label">Dominant Emotion</div>
-          <span class="dominant-emoji" id="dominant-emoji">🔍</span>
-          <div class="dominant-name" id="dominant-name">Waiting…</div>
-          <div class="dominant-confidence" id="dominant-confidence">—</div>
+        <!-- Dominant -->
+        <div class="dominant">
+          <div class="dominant-eyebrow">Dominant Emotion</div>
+          <span class="dominant-emoji" id="d-emoji">–</span>
+          <div class="dominant-emotion" id="d-name">Waiting</div>
+          <div class="dominant-score" id="d-score">—</div>
         </div>
 
-        <!-- Emotion Breakdown Bars -->
-        <div class="emotion-bars-card glass-card">
-          <div class="emotion-bars-title">Emotion Breakdown</div>
-
-          <div class="emotion-bar-row bar-happy">
-            <span class="emotion-bar-emoji">😊</span>
-            <span class="emotion-bar-label">Happy</span>
-            <div class="emotion-bar-track"><div class="emotion-bar-fill" style="width:0%"></div></div>
-            <span class="emotion-bar-value">0%</span>
-          </div>
-
-          <div class="emotion-bar-row bar-sad">
-            <span class="emotion-bar-emoji">😢</span>
-            <span class="emotion-bar-label">Sad</span>
-            <div class="emotion-bar-track"><div class="emotion-bar-fill" style="width:0%"></div></div>
-            <span class="emotion-bar-value">0%</span>
-          </div>
-
-          <div class="emotion-bar-row bar-angry">
-            <span class="emotion-bar-emoji">😠</span>
-            <span class="emotion-bar-label">Angry</span>
-            <div class="emotion-bar-track"><div class="emotion-bar-fill" style="width:0%"></div></div>
-            <span class="emotion-bar-value">0%</span>
-          </div>
-
-          <div class="emotion-bar-row bar-surprised">
-            <span class="emotion-bar-emoji">😲</span>
-            <span class="emotion-bar-label">Surprised</span>
-            <div class="emotion-bar-track"><div class="emotion-bar-fill" style="width:0%"></div></div>
-            <span class="emotion-bar-value">0%</span>
-          </div>
-
-          <div class="emotion-bar-row bar-fearful">
-            <span class="emotion-bar-emoji">😨</span>
-            <span class="emotion-bar-label">Fearful</span>
-            <div class="emotion-bar-track"><div class="emotion-bar-fill" style="width:0%"></div></div>
-            <span class="emotion-bar-value">0%</span>
-          </div>
-
-          <div class="emotion-bar-row bar-disgusted">
-            <span class="emotion-bar-emoji">🤢</span>
-            <span class="emotion-bar-label">Disgusted</span>
-            <div class="emotion-bar-track"><div class="emotion-bar-fill" style="width:0%"></div></div>
-            <span class="emotion-bar-value">0%</span>
-          </div>
-
-          <div class="emotion-bar-row bar-neutral">
-            <span class="emotion-bar-emoji">😐</span>
-            <span class="emotion-bar-label">Neutral</span>
-            <div class="emotion-bar-track"><div class="emotion-bar-fill" style="width:0%"></div></div>
-            <span class="emotion-bar-value">0%</span>
+        <!-- Radar chart -->
+        <div class="radar-section">
+          <div class="radar-eyebrow">Emotion Radar</div>
+          <div class="radar-wrap">
+            <canvas id="radar-canvas" width="480" height="480"></canvas>
           </div>
         </div>
 
-        <!-- Stats -->
-        <div class="stats-card glass-card">
-          <div class="stats-row">
-            <div class="stat-item">
-              <div class="stat-value" id="stat-faces">0</div>
-              <div class="stat-label">Faces</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-value" id="stat-fps">0</div>
-              <div class="stat-label">FPS</div>
-            </div>
+        <!-- List -->
+        <div class="emo-list">
+          <div class="emo-row emo-happy">
+            <span class="emo-icon">😊</span>
+            <span class="emo-name">Happy</span>
+            <div class="emo-track"><div class="emo-fill"></div></div>
+            <span class="emo-pct">0%</span>
+          </div>
+          <div class="emo-row emo-sad">
+            <span class="emo-icon">😢</span>
+            <span class="emo-name">Sad</span>
+            <div class="emo-track"><div class="emo-fill"></div></div>
+            <span class="emo-pct">0%</span>
+          </div>
+          <div class="emo-row emo-angry">
+            <span class="emo-icon">😠</span>
+            <span class="emo-name">Angry</span>
+            <div class="emo-track"><div class="emo-fill"></div></div>
+            <span class="emo-pct">0%</span>
+          </div>
+          <div class="emo-row emo-surprised">
+            <span class="emo-icon">😲</span>
+            <span class="emo-name">Surprised</span>
+            <div class="emo-track"><div class="emo-fill"></div></div>
+            <span class="emo-pct">0%</span>
+          </div>
+          <div class="emo-row emo-fearful">
+            <span class="emo-icon">😨</span>
+            <span class="emo-name">Fearful</span>
+            <div class="emo-track"><div class="emo-fill"></div></div>
+            <span class="emo-pct">0%</span>
+          </div>
+          <div class="emo-row emo-disgusted">
+            <span class="emo-icon">🤢</span>
+            <span class="emo-name">Disgusted</span>
+            <div class="emo-track"><div class="emo-fill"></div></div>
+            <span class="emo-pct">0%</span>
+          </div>
+          <div class="emo-row emo-neutral">
+            <span class="emo-icon">😐</span>
+            <span class="emo-name">Neutral</span>
+            <div class="emo-track"><div class="emo-fill"></div></div>
+            <span class="emo-pct">0%</span>
           </div>
         </div>
 
-      </aside>
-    </div>
-  </div>
+      </div><!-- /panel -->
+    </div><!-- /layout -->
+  </div><!-- /shell -->
 
-  <!-- Error Banner -->
-  <div id="error-banner" class="error-banner"></div>
+  <!-- Error toast -->
+  <div class="toast" id="toast"></div>
 
-  <!-- face-api.js (includes TensorFlow.js) -->
   <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
   <script src="app.js"></script>
 </body>

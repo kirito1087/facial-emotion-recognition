@@ -1,92 +1,81 @@
-/* ==============================================
-   Facial Emotion Recognition — Application Logic
-   ============================================== */
+/* ============================================
+   FER — Application Logic (Redesigned)
+   ============================================ */
 
 (() => {
   'use strict';
 
-  // ── Emotion Config ──────────────────────────
-  const EMOTIONS = {
-    happy:     { emoji: '😊', color: '#fbbf24' },
-    sad:       { emoji: '😢', color: '#60a5fa' },
-    angry:     { emoji: '😠', color: '#f87171' },
-    surprised: { emoji: '😲', color: '#a78bfa' },
-    fearful:   { emoji: '😨', color: '#34d399' },
-    disgusted: { emoji: '🤢', color: '#fb923c' },
-    neutral:   { emoji: '😐', color: '#94a3b8' },
+  // ── Emotion palette — warm, intentional hues ──
+  const EMO = {
+    happy:     { emoji: '😊', hue: 45,  sat: '80%', light: '55%', color: '#e2b340' },
+    sad:       { emoji: '😢', hue: 207, sat: '40%', light: '50%', color: '#5b8fb9' },
+    angry:     { emoji: '😠', hue: 3,   sat: '55%', light: '50%', color: '#c9524c' },
+    surprised: { emoji: '😲', hue: 270, sat: '45%', light: '55%', color: '#9b72cf' },
+    fearful:   { emoji: '😨', hue: 155, sat: '40%', light: '45%', color: '#45a882' },
+    disgusted: { emoji: '🤢', hue: 28,  sat: '55%', light: '48%', color: '#c47d3a' },
+    neutral:   { emoji: '😐', hue: 0,   sat: '0%',  light: '48%', color: '#777' },
   };
+  const EMO_KEYS = Object.keys(EMO);
 
   const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model';
 
-  // ── DOM References ──────────────────────────
-  const $ = (sel) => document.querySelector(sel);
-  const loadingScreen     = $('#loading-screen');
-  const progressBar       = $('.loading-progress-bar');
-  const appContainer      = $('.app-container');
-  const video             = $('#webcam-video');
-  const canvas            = $('#overlay-canvas');
-  const ctx               = canvas.getContext('2d');
-  const cameraPlaceholder = $('.camera-placeholder');
-  const noFaceIndicator   = $('.no-face-indicator');
-  const statusDot         = $('.status-dot');
-  const statusText        = $('#status-text');
-  const toggleBtn         = $('#toggle-btn');
-  const dominantEmoji     = $('#dominant-emoji');
-  const dominantName      = $('#dominant-name');
-  const dominantConfidence = $('#dominant-confidence');
-  const statFaces         = $('#stat-faces');
-  const statFPS           = $('#stat-fps');
-  const errorBanner       = $('#error-banner');
+  // ── DOM ──
+  const el = (s) => document.querySelector(s);
+  const loadScreen   = el('#loading-screen');
+  const progressBar  = el('#progress-bar');
+  const shell        = el('#shell');
+  const video        = el('#webcam');
+  const canvas       = el('#canvas');
+  const ctx          = canvas.getContext('2d');
+  const placeholder  = el('#placeholder');
+  const noFacePill   = el('#no-face');
+  const statusPip    = el('#status-pip');
+  const statusLabel  = el('#status-label');
+  const btn          = el('#btn');
+  const dEmoji       = el('#d-emoji');
+  const dName        = el('#d-name');
+  const dScore       = el('#d-score');
+  const vFaces       = el('#v-faces');
+  const vFps         = el('#v-fps');
+  const toast        = el('#toast');
+  const brandMark    = el('#brand-mark');
+  const radarCanvas  = el('#radar-canvas');
+  const rctx         = radarCanvas.getContext('2d');
+  const root         = document.documentElement;
 
-  // ── State ───────────────────────────────────
+  // ── State ──
   let stream = null;
-  let detecting = false;
-  let animFrameId = null;
-  let lastDominant = '';
-  let frameCount = 0;
-  let lastFpsTime = performance.now();
-  let currentFps = 0;
+  let running = false;
+  let raf = null;
+  let prevDominant = '';
+  let frames = 0;
+  let fpsTime = performance.now();
+  let smoothedValues = {};
+  EMO_KEYS.forEach(k => smoothedValues[k] = 0);
 
-  // ── Initialize ──────────────────────────────
-  async function init() {
+  // ── Boot ──
+  async function boot() {
     try {
       await loadModels();
-      hideLoading();
-      showApp();
-      // Auto-start the camera
-      await startCamera();
-    } catch (err) {
-      console.error('Initialization failed:', err);
-      showError('Failed to load AI models. Please check your connection and reload.');
+      loadScreen.classList.add('hidden');
+      setTimeout(() => shell.classList.add('visible'), 80);
+      await startCam();
+    } catch (e) {
+      console.error(e);
+      showToast('Failed to load AI models — check your connection.');
     }
   }
 
-  // ── Model Loading ───────────────────────────
   async function loadModels() {
-    setProgress(10);
-
+    progressBar.style.width = '15%';
     await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-    setProgress(50);
-
+    progressBar.style.width = '55%';
     await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);
-    setProgress(100);
+    progressBar.style.width = '100%';
   }
 
-  function setProgress(pct) {
-    progressBar.style.width = pct + '%';
-  }
-
-  // ── Loading / App Visibility ────────────────
-  function hideLoading() {
-    loadingScreen.classList.add('hidden');
-  }
-
-  function showApp() {
-    setTimeout(() => appContainer.classList.add('visible'), 100);
-  }
-
-  // ── Camera ──────────────────────────────────
-  async function startCamera() {
+  // ── Camera ──
+  async function startCam() {
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
@@ -94,224 +83,294 @@
       });
       video.srcObject = stream;
       await video.play();
-
-      // Match canvas to actual video dimensions
       video.addEventListener('loadedmetadata', () => {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-      });
+      }, { once: true });
 
-      cameraPlaceholder.classList.add('hidden');
-      statusDot.classList.add('active');
-      statusText.textContent = 'Detecting';
-      toggleBtn.textContent = '⏹ Stop';
-      toggleBtn.className = 'btn btn-danger';
-
-      detecting = true;
-      lastFpsTime = performance.now();
-      frameCount = 0;
-      detectLoop();
-    } catch (err) {
-      console.error('Camera error:', err);
-      if (err.name === 'NotAllowedError') {
-        showError('Camera access denied. Please allow camera permissions and reload.');
-      } else if (err.name === 'NotFoundError') {
-        showError('No camera found. Please connect a webcam and reload.');
-      } else {
-        showError('Could not access camera: ' + err.message);
-      }
+      placeholder.classList.add('gone');
+      statusPip.classList.add('live');
+      statusLabel.textContent = 'detecting';
+      btn.textContent = 'Stop';
+      btn.classList.add('stop');
+      running = true;
+      fpsTime = performance.now();
+      frames = 0;
+      tick();
+    } catch (e) {
+      if (e.name === 'NotAllowedError') showToast('Camera access denied.');
+      else if (e.name === 'NotFoundError') showToast('No camera found.');
+      else showToast('Camera error: ' + e.message);
     }
   }
 
-  function stopCamera() {
-    detecting = false;
-    if (animFrameId) {
-      cancelAnimationFrame(animFrameId);
-      animFrameId = null;
-    }
-    if (stream) {
-      stream.getTracks().forEach((t) => t.stop());
-      stream = null;
-    }
+  function stopCam() {
+    running = false;
+    if (raf) { cancelAnimationFrame(raf); raf = null; }
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
     video.srcObject = null;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    cameraPlaceholder.classList.remove('hidden');
-    statusDot.classList.remove('active');
-    statusText.textContent = 'Stopped';
-    toggleBtn.textContent = '▶ Start';
-    toggleBtn.className = 'btn btn-primary';
-    noFaceIndicator.classList.remove('visible');
-
-    // Reset sidebar
-    resetSidebar();
+    placeholder.classList.remove('gone');
+    statusPip.classList.remove('live');
+    statusLabel.textContent = 'offline';
+    btn.textContent = 'Start';
+    btn.classList.remove('stop');
+    noFacePill.classList.remove('show');
+    resetPanel();
   }
 
-  // ── Detection Loop ──────────────────────────
-  async function detectLoop() {
-    if (!detecting) return;
-
-    const detections = await faceapi
+  // ── Detection loop ──
+  async function tick() {
+    if (!running) return;
+    const dets = await faceapi
       .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.4 }))
       .withFaceExpressions();
 
-    // FPS counter
-    frameCount++;
+    // FPS
+    frames++;
     const now = performance.now();
-    if (now - lastFpsTime >= 1000) {
-      currentFps = frameCount;
-      frameCount = 0;
-      lastFpsTime = now;
-      statFPS.textContent = currentFps;
-    }
+    if (now - fpsTime >= 1000) { vFps.textContent = frames; frames = 0; fpsTime = now; }
 
-    // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (detections.length === 0) {
-      noFaceIndicator.classList.add('visible');
-      statFaces.textContent = '0';
+    if (!dets.length) {
+      noFacePill.classList.add('show');
+      vFaces.textContent = '0';
     } else {
-      noFaceIndicator.classList.remove('visible');
-      statFaces.textContent = detections.length;
+      noFacePill.classList.remove('show');
+      vFaces.textContent = dets.length;
 
-      // Use first face for sidebar
-      const primary = detections[0];
-      updateEmotionBars(primary.expressions);
-      updateDominantEmotion(primary.expressions);
-
-      // Draw all faces
-      for (const det of detections) {
-        drawDetection(det);
+      const primary = dets[0].expressions;
+      // Smooth values (lerp)
+      for (const k of EMO_KEYS) {
+        smoothedValues[k] += (primary[k] - smoothedValues[k]) * 0.3;
       }
+      updateBars(smoothedValues);
+      updateDominant(smoothedValues);
+      drawRadar(smoothedValues);
+
+      for (const d of dets) drawBox(d);
     }
 
-    animFrameId = requestAnimationFrame(detectLoop);
+    raf = requestAnimationFrame(tick);
   }
 
-  // ── Drawing ─────────────────────────────────
-  function drawDetection(det) {
-    const { x, y, width, height } = det.detection.box;
+  // ── Drawing ──
+  function drawBox(det) {
+    const { x, y, width: w, height: h } = det.detection.box;
+    const mx = canvas.width - x - w; // mirror
 
-    // Mirror the x coordinate (since video is mirrored via CSS)
-    const mx = canvas.width - x - width;
+    const sorted = Object.entries(det.expressions).sort((a, b) => b[1] - a[1]);
+    const [topE, topS] = sorted[0];
+    const cfg = EMO[topE] || EMO.neutral;
 
-    // Get dominant emotion
-    const expressions = det.expressions;
-    const sorted = Object.entries(expressions).sort((a, b) => b[1] - a[1]);
-    const [topEmotion, topScore] = sorted[0];
-    const emotionConfig = EMOTIONS[topEmotion] || EMOTIONS.neutral;
-
-    // Draw bounding box
-    ctx.strokeStyle = emotionConfig.color;
-    ctx.lineWidth = 2.5;
+    // Box — thin, minimal
+    ctx.strokeStyle = cfg.color;
+    ctx.lineWidth = 1.5;
     ctx.lineJoin = 'round';
-    roundRect(ctx, mx, y, width, height, 8);
+    rr(ctx, mx, y, w, h, 6);
     ctx.stroke();
 
-    // Draw label background
-    const label = `${emotionConfig.emoji} ${capitalize(topEmotion)} ${Math.round(topScore * 100)}%`;
-    ctx.font = '600 14px Inter, sans-serif';
-    const textMetrics = ctx.measureText(label);
-    const labelW = textMetrics.width + 16;
-    const labelH = 26;
-    const labelX = mx;
-    const labelY = y - labelH - 4;
+    // Corner accents
+    const corner = Math.min(w, h) * 0.15;
+    ctx.strokeStyle = cfg.color;
+    ctx.lineWidth = 2.5;
+    // top-left
+    ctx.beginPath(); ctx.moveTo(mx, y + corner); ctx.lineTo(mx, y); ctx.lineTo(mx + corner, y); ctx.stroke();
+    // top-right
+    ctx.beginPath(); ctx.moveTo(mx + w - corner, y); ctx.lineTo(mx + w, y); ctx.lineTo(mx + w, y + corner); ctx.stroke();
+    // bottom-left
+    ctx.beginPath(); ctx.moveTo(mx, y + h - corner); ctx.lineTo(mx, y + h); ctx.lineTo(mx + corner, y + h); ctx.stroke();
+    // bottom-right
+    ctx.beginPath(); ctx.moveTo(mx + w - corner, y + h); ctx.lineTo(mx + w, y + h); ctx.lineTo(mx + w, y + h - corner); ctx.stroke();
 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.beginPath();
-    roundRect(ctx, labelX, labelY, labelW, labelH, 6);
+    // Label — minimal, below box
+    const label = `${topE} ${Math.round(topS * 100)}%`;
+    ctx.font = '500 11px "Space Grotesk", system-ui';
+    const tw = ctx.measureText(label).width;
+    const lx = mx + (w - tw) / 2;
+    const ly = y + h + 18;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    rr(ctx, lx - 6, ly - 12, tw + 12, 16, 3);
     ctx.fill();
 
-    ctx.fillStyle = '#fff';
-    ctx.fillText(label, labelX + 8, labelY + 18);
+    ctx.fillStyle = cfg.color;
+    ctx.fillText(label, lx, ly);
   }
 
-  function roundRect(ctx, x, y, w, h, r) {
+  function rr(ctx, x, y, w, h, r) {
     ctx.beginPath();
     ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.arcTo(x + w, y, x + w, y + r, r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-    ctx.lineTo(x + r, y + h);
-    ctx.arcTo(x, y + h, x, y + h - r, r);
-    ctx.lineTo(x, y + r);
-    ctx.arcTo(x, y, x + r, y, r);
+    ctx.lineTo(x + w - r, y); ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r); ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h); ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r); ctx.arcTo(x, y, x + r, y, r);
     ctx.closePath();
   }
 
-  // ── Sidebar Updates ─────────────────────────
-  function updateEmotionBars(expressions) {
-    for (const [emotion, score] of Object.entries(expressions)) {
-      const fill = document.querySelector(`.bar-${emotion} .emotion-bar-fill`);
-      const value = document.querySelector(`.bar-${emotion} .emotion-bar-value`);
-      if (fill && value) {
-        fill.style.width = (score * 100).toFixed(0) + '%';
-        value.textContent = (score * 100).toFixed(0) + '%';
-      }
+  // ── Panel updates ──
+  function updateBars(vals) {
+    for (const k of EMO_KEYS) {
+      const row = document.querySelector(`.emo-${k}`);
+      if (!row) continue;
+      const pct = Math.round(vals[k] * 100);
+      row.querySelector('.emo-fill').style.width = pct + '%';
+      row.querySelector('.emo-pct').textContent = pct + '%';
     }
   }
 
-  function updateDominantEmotion(expressions) {
-    const sorted = Object.entries(expressions).sort((a, b) => b[1] - a[1]);
-    const [topEmotion, topScore] = sorted[0];
-    const config = EMOTIONS[topEmotion] || EMOTIONS.neutral;
+  function updateDominant(vals) {
+    const sorted = Object.entries(vals).sort((a, b) => b[1] - a[1]);
+    const [topE, topS] = sorted[0];
+    const cfg = EMO[topE] || EMO.neutral;
 
-    dominantName.textContent = capitalize(topEmotion);
-    dominantConfidence.textContent = (topScore * 100).toFixed(1) + '% confidence';
+    dName.textContent = topE;
+    dScore.textContent = Math.round(topS * 100) + '%';
+    dName.style.color = cfg.color;
 
-    if (topEmotion !== lastDominant) {
-      dominantEmoji.textContent = config.emoji;
-      dominantEmoji.classList.remove('pop');
-      // Trigger reflow to restart animation
-      void dominantEmoji.offsetWidth;
-      dominantEmoji.classList.add('pop');
-      lastDominant = topEmotion;
+    // Ambient glow color shift
+    root.style.setProperty('--emotion-hue', cfg.hue);
+    root.style.setProperty('--emotion-sat', cfg.sat);
+    root.style.setProperty('--emotion-light', cfg.light);
+
+    // Brand mark
+    brandMark.style.background = cfg.color;
+
+    if (topE !== prevDominant) {
+      dEmoji.textContent = cfg.emoji;
+      dEmoji.classList.remove('bounce');
+      void dEmoji.offsetWidth;
+      dEmoji.classList.add('bounce');
+      prevDominant = topE;
     }
   }
 
-  function resetSidebar() {
-    dominantEmoji.textContent = '🔍';
-    dominantName.textContent = 'Waiting...';
-    dominantConfidence.textContent = '—';
-    statFaces.textContent = '0';
-    statFPS.textContent = '0';
-    lastDominant = '';
+  // ── Radar chart (canvas) ──
+  function drawRadar(vals) {
+    const W = radarCanvas.width;
+    const H = radarCanvas.height;
+    const cx = W / 2;
+    const cy = H / 2;
+    const maxR = Math.min(cx, cy) * 0.78;
+    const n = EMO_KEYS.length;
+    const step = (Math.PI * 2) / n;
 
-    for (const emotion of Object.keys(EMOTIONS)) {
-      const fill = document.querySelector(`.bar-${emotion} .emotion-bar-fill`);
-      const value = document.querySelector(`.bar-${emotion} .emotion-bar-value`);
-      if (fill && value) {
-        fill.style.width = '0%';
-        value.textContent = '0%';
-      }
+    rctx.clearRect(0, 0, W, H);
+
+    // Grid rings
+    for (let ring = 1; ring <= 4; ring++) {
+      const r = maxR * (ring / 4);
+      rctx.beginPath();
+      rctx.arc(cx, cy, r, 0, Math.PI * 2);
+      rctx.strokeStyle = ring === 4 ? '#333' : '#222';
+      rctx.lineWidth = 1;
+      rctx.stroke();
+    }
+
+    // Axis lines
+    for (let i = 0; i < n; i++) {
+      const a = step * i - Math.PI / 2;
+      rctx.beginPath();
+      rctx.moveTo(cx, cy);
+      rctx.lineTo(cx + Math.cos(a) * maxR, cy + Math.sin(a) * maxR);
+      rctx.strokeStyle = '#222';
+      rctx.lineWidth = 1;
+      rctx.stroke();
+    }
+
+    // Data shape — fill
+    rctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const a = step * i - Math.PI / 2;
+      const v = Math.max(vals[EMO_KEYS[i]] || 0, 0.02);
+      const r = v * maxR;
+      const px = cx + Math.cos(a) * r;
+      const py = cy + Math.sin(a) * r;
+      if (i === 0) rctx.moveTo(px, py);
+      else rctx.lineTo(px, py);
+    }
+    rctx.closePath();
+
+    // Gradient fill
+    const topE = Object.entries(vals).sort((a, b) => b[1] - a[1])[0][0];
+    const cfg = EMO[topE] || EMO.neutral;
+    rctx.fillStyle = hexToRGBA(cfg.color, 0.12);
+    rctx.fill();
+    rctx.strokeStyle = hexToRGBA(cfg.color, 0.6);
+    rctx.lineWidth = 1.5;
+    rctx.stroke();
+
+    // Data dots
+    for (let i = 0; i < n; i++) {
+      const a = step * i - Math.PI / 2;
+      const v = Math.max(vals[EMO_KEYS[i]] || 0, 0.02);
+      const r = v * maxR;
+      const px = cx + Math.cos(a) * r;
+      const py = cy + Math.sin(a) * r;
+
+      rctx.beginPath();
+      rctx.arc(px, py, 3, 0, Math.PI * 2);
+      rctx.fillStyle = EMO[EMO_KEYS[i]].color;
+      rctx.fill();
+    }
+
+    // Labels
+    for (let i = 0; i < n; i++) {
+      const a = step * i - Math.PI / 2;
+      const lr = maxR + 24;
+      const lx = cx + Math.cos(a) * lr;
+      const ly = cy + Math.sin(a) * lr;
+
+      rctx.font = '500 18px "Space Grotesk", system-ui';
+      rctx.fillStyle = '#666';
+      rctx.textAlign = 'center';
+      rctx.textBaseline = 'middle';
+      rctx.fillText(EMO[EMO_KEYS[i]].emoji, lx, ly);
     }
   }
 
-  // ── Helpers ─────────────────────────────────
-  function capitalize(str) {
-    return str.charAt(0).toUpperCase() + str.slice(1);
+  function hexToRGBA(hex, alpha) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
   }
 
-  function showError(msg) {
-    errorBanner.textContent = '⚠ ' + msg;
-    errorBanner.classList.add('visible');
-    setTimeout(() => errorBanner.classList.remove('visible'), 8000);
-  }
-
-  // ── Event Listeners ─────────────────────────
-  toggleBtn.addEventListener('click', () => {
-    if (detecting) {
-      stopCamera();
-    } else {
-      startCamera();
+  function resetPanel() {
+    dEmoji.textContent = '–';
+    dName.textContent = 'Waiting';
+    dName.style.color = '';
+    dScore.textContent = '—';
+    vFaces.textContent = '0';
+    vFps.textContent = '0';
+    prevDominant = '';
+    EMO_KEYS.forEach(k => smoothedValues[k] = 0);
+    for (const k of EMO_KEYS) {
+      const row = document.querySelector(`.emo-${k}`);
+      if (!row) continue;
+      row.querySelector('.emo-fill').style.width = '0%';
+      row.querySelector('.emo-pct').textContent = '0%';
     }
-  });
-
-  // ── Boot ────────────────────────────────────
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
+    // Clear radar
+    rctx.clearRect(0, 0, radarCanvas.width, radarCanvas.height);
+    // Reset ambient
+    root.style.setProperty('--emotion-hue', '0');
+    root.style.setProperty('--emotion-sat', '0%');
+    root.style.setProperty('--emotion-light', '50%');
+    brandMark.style.background = '';
   }
+
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 6000);
+  }
+
+  // ── Events ──
+  btn.addEventListener('click', () => running ? stopCam() : startCam());
+
+  // ── Init ──
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
 })();
