@@ -4,7 +4,7 @@ Real-time facial emotion recognition powered by AI — right in your browser. De
 
 Built with [@vladmandic/face-api](https://github.com/vladmandic/face-api) (TensorFlow.js). All processing happens locally — no data is sent to any server.
 
-### 🚀 [Live Demo → facial-emotion-recognition1.netlify.app](https://facial-emotion-recognition1.netlify.app)
+### 🚀 [Live Demo → facial-emotion-recognition1.netlify.app](https://facial-emotion-recognition10.netlify.app)
 
 > **📌 Previously built with Python** (OpenCV + FER library). Migrated to a pure web-based solution for better reliability, zero setup, and cross-platform support. The original Python version had dependency issues with the `fer` library and required a full Python/pip environment. This updated version runs entirely in the browser with no installation needed.
 
